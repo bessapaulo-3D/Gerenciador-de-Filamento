@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Controle de Filamentos 3D</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+  <style>
+    body {
+      background-color: #0f172a;
+      color: #f8fafc;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #1e293b;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #475569;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body class="min-h-screen pb-12 antialiased selection:bg-sky-500 selection:text-white">
+
+  <!-- Header -->
+  <header class="sticky top-0 z-30 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-4 py-3 sm:px-6">
+    <div class="max-w-6xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-xl bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-sky-400 font-bold text-xl">
+            <i class="fa-solid fa-layer-group"></i>
+          </div>
+          <div>
+            <h1 class="text-lg font-bold text-white leading-tight">FilaTrack 3D</h1>
+            <p class="text-xs text-slate-400">Gerenciador de Filamentos</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Barra de Ações do Topo -->
+      <div class="flex flex-wrap items-center gap-2">
+        <input type="file" id="excel-file-input" accept=".xlsx, .xls, .csv" class="hidden" onchange="handleExcelImport(event)">
+        
+        <button id="btn-import-excel" type="button" class="bg-emerald-700/80 hover:bg-emerald-600 active:scale-95 transition text-white px-3 py-2 rounded-xl font-medium text-xs flex items-center space-x-1.5 border border-emerald-500/30 shadow-lg cursor-pointer">
+          <i class="fa-solid fa-file-excel"></i>
+          <span>Importar</span>
+        </button>
+
+        <button id="btn-manage-colors" type="button" class="bg-purple-700/80 hover:bg-purple-600 active:scale-95 transition text-white px-3 py-2 rounded-xl font-medium text-xs flex items-center space-x-1.5 border border-purple-500/30 shadow-lg cursor-pointer">
+          <i class="fa-solid fa-palette"></i>
+          <span>Cores</span>
+        </button>
+
+        <button id="btn-add-material" type="button" class="bg-indigo-700/80 hover:bg-indigo-600 active:scale-95 transition text-white px-3 py-2 rounded-xl font-medium text-xs flex items-center space-x-1.5 border border-indigo-500/30 shadow-lg cursor-pointer">
+          <i class="fa-solid fa-tags"></i>
+          <span>Novo Material</span>
+        </button>
+
+        <button id="btn-clear-db" type="button" class="bg-red-900/80 hover:bg-red-700 active:scale-95 transition text-white px-3 py-2 rounded-xl font-medium text-xs flex items-center space-x-1.5 border border-red-500/30 shadow-lg cursor-pointer">
+          <i class="fa-solid fa-trash-arrow-up"></i>
+          <span>Limpar Tudo</span>
+        </button>
+
+        <button id="btn-new-spool" type="button" class="bg-sky-600 hover:bg-sky-500 active:scale-95 transition text-white px-3.5 py-2 rounded-xl font-medium text-xs sm:text-sm flex items-center space-x-1.5 shadow-lg shadow-sky-600/20 cursor-pointer">
+          <i class="fa-solid fa-plus"></i>
+          <span>Novo Filamento</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-4 py-6 space-y-6">
+    <!-- Quadros de Resumo -->
+    <section class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+      <div class="bg-slate-800/80 border border-slate-700/60 p-4 rounded-2xl flex flex-col justify-between">
+        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Carretéis</span>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span id="stat-total-spools" class="text-2xl font-black text-white">0</span>
+          <i class="fa-solid fa-boxes-stacked text-slate-500 text-lg"></i>
+        </div>
+      </div>
+      <div class="bg-slate-800/80 border border-slate-700/60 p-4 rounded-2xl flex flex-col justify-between">
+        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Peso Disponível</span>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span id="stat-total-weight" class="text-2xl font-black text-sky-400">0.0 kg</span>
+          <i class="fa-solid fa-weight-hanging text-sky-500/50 text-lg"></i>
+        </div>
+      </div>
+
+      <div id="card-low-stock" onclick="toggleLowStockFilter()" class="bg-slate-800/80 border border-slate-700/60 hover:border-amber-500/50 p-4 rounded-2xl flex flex-col justify-between cursor-pointer transition relative overflow-hidden group">
+        <div class="flex justify-between items-center">
+          <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider group-hover:text-amber-400 transition">Estoque Baixo (&lt;25%)</span>
+          <span id="badge-active-filter" class="hidden text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded">FILTRANDO</span>
+        </div>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span id="stat-low-stock" class="text-2xl font-black text-amber-400">0</span>
+          <i class="fa-solid fa-triangle-exclamation text-amber-500/50 text-lg"></i>
+        </div>
+      </div>
+
+      <div class="bg-slate-800/80 border border-slate-700/60 p-4 rounded-2xl flex flex-col justify-between">
+        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Valor Estimado</span>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span id="stat-total-value" class="text-2xl font-black text-emerald-400">R$ 0</span>
+          <i class="fa-solid fa-coins text-emerald-500/50 text-lg"></i>
+        </div>
+      </div>
+    </section>
+
+    <!-- Filtros -->
+    <section class="bg-slate-800/60 border border-slate-700/60 p-3 sm:p-4 rounded-2xl flex flex-col sm:flex-row gap-3 items-center justify-between">
+      <div class="relative w-full sm:w-80">
+        <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+        <input id="search-input" oninput="renderSpools()" type="text" placeholder="Buscar por marca, cor ou tipo..." class="w-full bg-slate-900 border border-slate-700 rounded-xl pl-9 pr-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 transition">
+      </div>
+      <div class="flex items-center space-x-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
+        <label class="text-xs text-slate-400 font-medium whitespace-nowrap">Filtrar:</label>
+        <select id="filter-material" onchange="resetLowStockFilter(); renderSpools();" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+          <!-- Opções preenchidas via JS -->
+        </select>
+      </div>
+    </section>
+
+    <!-- Grid de Carretéis -->
+    <section id="spool-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></section>
+
+    <!-- Estado Vazio -->
+    <div id="empty-state" class="hidden text-center py-12 bg-slate-800/30 border border-dashed border-slate-700 rounded-2xl">
+      <i class="fa-solid fa-box-open text-4xl text-slate-600 mb-3"></i>
+      <h3 class="text-base font-semibold text-slate-300">Nenhum filamento encontrado</h3>
+      <p class="text-xs text-slate-500 mt-1">Cadastre um novo carretel ou importe uma planilha do Excel.</p>
+    </div>
+  </main>
+
+  <!-- Modal: Cadastrar / Editar Filamento -->
+  <div id="spool-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm hidden">
+    <div class="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+      <div class="px-6 py-4 border-b border-slate-700 flex justify-between items-center bg-slate-800/90">
+        <h2 id="modal-title" class="text-base font-bold text-white">Novo Filamento</h2>
+        <button type="button" onclick="closeSpoolModal()" class="text-slate-400 hover:text-white transition">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <form id="spool-form" onsubmit="saveSpool(event)" class="p-6 overflow-y-auto space-y-4 custom-scrollbar">
+        <input type="hidden" id="spool-id">
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Marca *</label>
+            <input id="input-brand" type="text" placeholder="Ex: Creality, Voolt3D" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Material *</label>
+            <select id="input-material" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+              <!-- Opções carregadas via JS -->
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-3">
+          <div class="col-span-2">
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Nome da Cor *</label>
+            <input id="input-color-name" type="text" placeholder="Ex: Vermelho, Preto Fosco, Cinza" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500" oninput="autoDetectColorInput(this.value)">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Cor Visual</label>
+            <input id="input-color-hex" type="color" value="#0284c7" class="w-full h-[38px] bg-slate-900 border border-slate-700 rounded-xl p-1 cursor-pointer">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 bg-slate-900/50 p-3 rounded-xl border border-slate-700/50">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Temp. Bico (°C)</label>
+            <input id="input-temp-nozzle" type="number" placeholder="Ex: 215" min="150" max="350" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Temp. Mesa (°C)</label>
+            <input id="input-temp-bed" type="number" placeholder="Ex: 60" min="0" max="150" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Fluxo / Flow (%)</label>
+            <input id="input-flow-rate" type="number" step="0.1" placeholder="Ex: 98.5" min="50" max="150" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Vel. Volumétrica (mm³/s)</label>
+            <input id="input-max-volumetric" type="number" step="0.1" placeholder="Ex: 15.5" min="1" max="100" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Peso Inicial (g) *</label>
+            <input id="input-initial-weight" type="number" min="1" placeholder="Ex: 1000" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Peso Atual (g) *</label>
+            <input id="input-current-weight" type="number" min="0" placeholder="Ex: 850" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Preço Pago (R$)</label>
+          <input id="input-price" type="number" step="0.01" placeholder="Ex: 110.00" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+        </div>
+
+        <div class="pt-2 flex justify-end space-x-2 border-t border-slate-700">
+          <button type="button" onclick="closeSpoolModal()" class="px-4 py-2 text-sm font-medium text-slate-400 hover:text-white transition">Cancelar</button>
+          <button type="submit" class="px-5 py-2 text-sm font-medium bg-sky-600 hover:bg-sky-500 text-white rounded-xl shadow-lg transition">Salvar Filamento</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Cadastrar Novo Material -->
+  <div id="material-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm hidden">
+    <div class="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-6">
+      <h3 class="text-base font-bold text-white mb-2">Cadastrar Novo Material</h3>
+      <form onsubmit="saveNewMaterial(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Nome do Material (Ex: PET-CF, Nylon)</label>
+          <input id="input-new-material-name" type="text" placeholder="Ex: ASA-CF" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+        </div>
+        <div class="flex justify-end space-x-2 pt-2">
+          <button type="button" onclick="closeMaterialModal()" class="px-3.5 py-1.5 text-xs font-medium text-slate-400 hover:text-white transition">Cancelar</button>
+          <button type="submit" class="px-4 py-1.5 text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl shadow-lg transition">Adicionar Material</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Cadastrar / Editar Cores -->
+  <div id="color-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm hidden">
+    <div class="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-6 space-y-4">
+      <h3 class="text-base font-bold text-white">Cadastrar / Alterar Cor</h3>
+      <form onsubmit="saveCustomColor(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Nome/Palavra-chave da Cor</label>
+          <input id="input-custom-color-name" type="text" placeholder="Ex: Esmeralda, Ouro, Turquesa" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Cor Visual (Hexadecimal)</label>
+          <div class="flex items-center space-x-2">
+            <input id="input-custom-color-hex" type="color" value="#10b981" class="w-12 h-[38px] bg-slate-900 border border-slate-700 rounded-xl p-1 cursor-pointer">
+            <input id="input-custom-color-hex-text" type="text" placeholder="#10b981" class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500" oninput="document.getElementById('input-custom-color-hex').value = this.value">
+          </div>
+        </div>
+        <div class="flex justify-end space-x-2 pt-2">
+          <button type="button" onclick="closeColorModal()" class="px-3.5 py-1.5 text-xs font-medium text-slate-400 hover:text-white transition">Cancelar</button>
+          <button type="submit" class="px-4 py-1.5 text-xs font-medium bg-purple-600 hover:bg-purple-500 text-white rounded-xl shadow-lg transition">Salvar Cor</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Dar Baixa -->
+  <div id="deduct-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm hidden">
+    <div class="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-6">
+      <h3 class="text-base font-bold text-white mb-1">Dar Baixa no Filamento</h3>
+      <p id="deduct-spool-info" class="text-xs text-slate-400 mb-4"></p>
+
+      <form onsubmit="confirmDeduction(event)" class="space-y-4">
+        <input type="hidden" id="deduct-spool-id">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Peso da Peça Impressa (g)</label>
+          <input id="deduct-amount" type="number" min="1" placeholder="Ex: 45" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+        </div>
+        <div class="flex justify-end space-x-2 pt-2">
+          <button type="button" onclick="closeDeductModal()" class="px-3.5 py-1.5 text-xs font-medium text-slate-400 hover:text-white transition">Cancelar</button>
+          <button type="submit" class="px-4 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow-lg transition">Descontar Peso</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Conflito de Duplicidade na Importação -->
+  <div id="duplicate-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm hidden">
+    <div class="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl p-6 space-y-4">
+      <div class="flex items-center space-x-3 text-amber-400">
+        <i class="fa-solid fa-clone text-2xl"></i>
+        <h3 class="text-base font-bold text-white">Filamento Duplicado Detectado</h3>
+      </div>
+      <p id="duplicate-msg" class="text-xs text-slate-300 leading-relaxed"></p>
+      
+      <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-700/50 text-xs text-slate-400 space-y-1">
+        <p><strong>Existente:</strong> <span id="dup-existing-info" class="text-slate-200"></span></p>
+        <p><strong>A Importar:</strong> <span id="dup-incoming-info" class="text-slate-200"></span></p>
+      </div>
+
+      <div class="grid grid-cols-3 gap-2 pt-2">
+        <button type="button" onclick="resolveDuplicate('ignore')" class="px-3 py-2 text-xs font-medium bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-xl transition">
+          Ignorar
+        </button>
+        <button type="button" onclick="resolveDuplicate('add')" class="px-3 py-2 text-xs font-medium bg-sky-600 hover:bg-sky-500 text-white rounded-xl transition">
+          Criar Novo
+        </button>
+        <button type="button" onclick="resolveDuplicate('merge')" class="px-3 py-2 text-xs font-medium bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition">
+          Somar Peso
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'filatrack_3d_spools_v8';
+    const MATERIALS_KEY = 'filatrack_3d_materials_v1';
+    const COLORS_KEY = 'filatrack_3d_colors_v1';
+
+    let filterOnlyLowStock = false;
+    let pendingDuplicates = [];
+    let currentDuplicateIndex = 0;
+    let importedSuccessCount = 0;
+
+    let customMaterials = ['PLA', 'PLA+', 'PETG', 'ABS', 'TPU', 'ASA', 'OUTRO'];
+    let customColorMap = {
+      'preto': '#1e1e1e', 'black': '#1e1e1e', 'cadilac': '#1e1e1e',
+      'branco': '#ffffff', 'white': '#ffffff', 'neve': '#f8fafc',
+      'cinza': '#64748b', 'gray': '#64748b', 'grey': '#64748b', 'prata': '#cbd5e1', 'silver': '#cbd5e1',
+      'vermelho': '#ef4444', 'red': '#ef4444', 'rubi': '#991b1b',
+      'azul': '#3b82f6', 'blue': '#3b82f6', 'celeste': '#0ea5e9', 'marinho': '#1e3a8a',
+      'verde': '#22c55e', 'green': '#22c55e', 'lima': '#84cc16', 'exército': '#3f6212', 'abacate': '#65a30d',
+      'amarelo': '#eab308', 'yellow': '#eab308', 'canario': '#fde047',
+      'laranja': '#f97316', 'orange': '#f97316',
+      'roxo': '#a855f7', 'purple': '#a855f7', 'violeta': '#7c3aed', 'lilas': '#c084fc',
+      'rosa': '#ec4899', 'pink': '#ec4899', 'pink/shock': '#be185d',
+      'marrone': '#78350f', 'castanho': '#78350f', 'brown': '#78350f', 'chocolate': '#451a03',
+      'bege': '#fef3c7', 'skin': '#fde68a', 'pele': '#fde68a',
+      'dourado': '#eab308', 'gold': '#d97706', 'cobre': '#b45309', 'bronze': '#92400e',
+      'transparente': '#e2e8f0', 'clear': '#e2e8f0', 'translúcido': '#38bdf8', 'translucido': '#38bdf8'
+    };
+
+    const sampleSpools = [
+      { id: '1', brand: 'Voolt3D', material: 'PLA', colorName: 'Preto Cadilac', colorHex: '#1e1e1e', initialWeight: 1000, currentWeight: 720, price: 95.00, tempNozzle: 210, tempBed: 60, flowRate: 100, maxVolumetric: 15 },
+      { id: '2', brand: 'Creality', material: 'PLA+', colorName: 'Branco Neve', colorHex: '#ffffff', initialWeight: 1000, currentWeight: 180, price: 110.00, tempNozzle: 205, tempBed: 60, flowRate: 98, maxVolumetric: 18 },
+      { id: '3', brand: 'eSUN', material: 'PETG', colorName: 'Azul Translúcido', colorHex: '#38bdf8', initialWeight: 1000, currentWeight: 950, price: 130.00, tempNozzle: 235, tempBed: 80, flowRate: 95, maxVolumetric: 12 }
+    ];
+
+    let spools = [];
+
+    document.addEventListener('DOMContentLoaded', function() {
+      loadSettings();
+      init();
+
+      document.getElementById('btn-new-spool').addEventListener('click', () => openSpoolModal());
+      document.getElementById('btn-import-excel').addEventListener('click', () => document.getElementById('excel-file-input').click());
+      document.getElementById('btn-add-material').addEventListener('click', () => openMaterialModal());
+      document.getElementById('btn-manage-colors').addEventListener('click', () => openColorModal());
+      document.getElementById('btn-clear-db').addEventListener('click', () => clearDatabase());
+
+      document.getElementById('input-custom-color-hex').addEventListener('input', function() {
+        document.getElementById('input-custom-color-hex-text').value = this.value;
+      });
+    });
+
+    function loadSettings() {
+      const storedMat = localStorage.getItem(MATERIALS_KEY);
+      if (storedMat) {
+        try { customMaterials = JSON.parse(storedMat); } catch(e){}
+      }
+      const storedColors = localStorage.getItem(COLORS_KEY);
+      if (storedColors) {
+        try { customColorMap = { ...customColorMap, ...JSON.parse(storedColors) }; } catch(e){}
+      }
+      populateMaterialDropdowns();
+    }
+
+    function populateMaterialDropdowns() {
+      const selectForm = document.getElementById('input-material');
+      const selectFilter = document.getElementById('filter-material');
+
+      selectForm.innerHTML = '';
+      selectFilter.innerHTML = '<option value="ALL">Todos os Materiais</option>';
+
+      customMaterials.forEach(mat => {
+        const opt1 = document.createElement('option');
+        opt1.value = mat;
+        opt1.innerText = mat;
+        selectForm.appendChild(opt1);
+
+        const opt2 = document.createElement('option');
+        opt2.value = mat;
+        opt2.innerText = mat;
+        selectFilter.appendChild(opt2);
+      });
+    }
+
+    function detectColorHex(colorName) {
+      if (!colorName) return '#0284c7';
+      const words = colorName.toLowerCase().split(/[\s\-_]+/);
+      for (let word of words) {
+        if (customColorMap[word]) return customColorMap[word];
+      }
+      return '#0284c7';
+    }
+
+    function autoDetectColorInput(value) {
+      const detected = detectColorHex(value);
+      document.getElementById('input-color-hex').value = detected;
+    }
+
+    function init() {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        try {
+          spools = JSON.parse(stored);
+        } catch(e) {
+          spools = sampleSpools;
+        }
+      } else {
+        spools = sampleSpools;
+        saveToStorage();
+      }
+      renderSpools();
+    }
+
+    function saveToStorage() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(spools));
+    }
+
+    // --- BOTÃO LIMPAR BANCO DE DADOS ---
+    function clearDatabase() {
+      if (confirm('ATENÇÃO: Deseja realmente LIMPAR TODO O BANCO DE DADOS?\nEsta ação não poderá ser desfeita.')) {
+        spools = [];
+        saveToStorage();
+        renderSpools();
+        alert('Banco de dados zerado com sucesso!');
+      }
+    }
+
+    // --- CADASTRO DE NOVO MATERIAL ---
+    function openMaterialModal() {
+      document.getElementById('input-new-material-name').value = '';
+      document.getElementById('material-modal').classList.remove('hidden');
+    }
+
+    function closeMaterialModal() {
+      document.getElementById('material-modal').classList.add('hidden');
+    }
+
+    function saveNewMaterial(e) {
+      e.preventDefault();
+      const name = document.getElementById('input-new-material-name').value.trim().toUpperCase();
+      if (!name) return;
+
+      if (!customMaterials.includes(name)) {
+        customMaterials.unshift(name);
+        localStorage.setItem(MATERIALS_KEY, JSON.stringify(customMaterials));
+        populateMaterialDropdowns();
+        alert(`Material "${name}" cadastrado com sucesso!`);
+      }
+      closeMaterialModal();
+    }
+
+    // --- CADASTRO/ALTERAÇÃO DE CORES VISUAIS ---
+    function openColorModal() {
+      document.getElementById('input-custom-color-name').value = '';
+      document.getElementById('input-custom-color-hex').value = '#10b981';
+      document.getElementById('input-custom-color-hex-text').value = '#10b981';
+      document.getElementById('color-modal').classList.remove('hidden');
+    }
+
+    function closeColorModal() {
+      document.getElementById('color-modal').classList.add('hidden');
+    }
+
+    function saveCustomColor(e) {
+      e.preventDefault();
+      const key = document.getElementById('input-custom-color-name').value.trim().toLowerCase();
+      const hex = document.getElementById('input-custom-color-hex').value;
+      if (!key) return;
+
+      customColorMap[key] = hex;
+      localStorage.setItem(COLORS_KEY, JSON.stringify(customColorMap));
+      alert(`Cor "${key}" associada ao código ${hex} com sucesso!`);
+      closeColorModal();
+    }
+
+    function toggleLowStockFilter() {
+      filterOnlyLowStock = !filterOnlyLowStock;
+      const card = document.getElementById('card-low-stock');
+      const badge = document.getElementById('badge-active-filter');
+
+      if (filterOnlyLowStock) {
+        card.classList.add('border-amber-500', 'bg-amber-950/20');
+        badge.classList.remove('hidden');
+      } else {
+        card.classList.remove('border-amber-500', 'bg-amber-950/20');
+        badge.classList.add('hidden');
+      }
+
+      renderSpools();
+    }
+
+    function resetLowStockFilter() {
+      filterOnlyLowStock = false;
+      const card = document.getElementById('card-low-stock');
+      const badge = document.getElementById('badge-active-filter');
+      card.classList.remove('border-amber-500', 'bg-amber-950/20');
+      badge.classList.add('hidden');
+    }
+
+    function renderSpools() {
+      const grid = document.getElementById('spool-grid');
+      const emptyState = document.getElementById('empty-state');
+      const searchQuery = (document.getElementById('search-input').value || '').toLowerCase();
+      const materialFilter = document.getElementById('filter-material').value;
+
+      grid.innerHTML = '';
+
+      let filtered = spools.filter(spool => {
+        const matchesSearch = (spool.brand || '').toLowerCase().includes(searchQuery) ||
+                              (spool.colorName || '').toLowerCase().includes(searchQuery) ||
+                              (spool.material || '').toLowerCase().includes(searchQuery);
+        const matchesMaterial = materialFilter === 'ALL' || spool.material === materialFilter;
+        const isLowStock = (spool.currentWeight / spool.initialWeight) < 0.25;
+        const matchesLowStock = filterOnlyLowStock ? isLowStock : true;
+
+        return matchesSearch && matchesMaterial && matchesLowStock;
+      });
+
+      updateStats();
+
+      if (filtered.length === 0) {
+        emptyState.classList.remove('hidden');
+      } else {
+        emptyState.classList.add('hidden');
+      }
+
+      filtered.forEach(spool => {
+        const pct = Math.round((spool.currentWeight / spool.initialWeight) * 100);
+        let progressColor = 'bg-sky-500';
+        if (pct < 25) progressColor = 'bg-amber-500';
+        if (pct < 10) progressColor = 'bg-red-500';
+
+        const card = document.createElement('div');
+        card.className = "bg-slate-800/90 border border-slate-700/80 rounded-2xl p-4 flex flex-col justify-between hover:border-slate-600 transition shadow-lg relative overflow-hidden group";
+        
+        card.innerHTML = `
+          <div>
+            <div class="flex items-start justify-between gap-2 mb-2">
+              <div class="flex items-center space-x-2">
+                <span class="w-4 h-4 rounded-full border border-slate-600 shadow-sm shrink-0" style="background-color: ${spool.colorHex || '#0284c7'}"></span>
+                <div>
+                  <h3 class="font-bold text-white text-base leading-tight">${spool.colorName}</h3>
+                  <p class="text-xs text-slate-400 font-medium">${spool.brand}</p>
+                </div>
+              </div>
+              <span class="px-2.5 py-0.5 rounded-full text-xs font-extrabold tracking-wide uppercase bg-slate-700 text-sky-400 border border-slate-600">
+                ${spool.material}
+              </span>
+            </div>
+
+            <div class="my-3 grid grid-cols-2 gap-2 text-xs bg-slate-900/60 p-2.5 rounded-xl border border-slate-700/40">
+              <div class="flex items-center space-x-1.5 text-slate-300">
+                <i class="fa-solid fa-temperature-high text-orange-400"></i>
+                <span>Bico: <strong class="text-white">${spool.tempNozzle ? spool.tempNozzle + '°C' : 'N/I'}</strong></span>
+              </div>
+              <div class="flex items-center space-x-1.5 text-slate-300">
+                <i class="fa-solid fa-square-full text-amber-500 text-[10px]"></i>
+                <span>Mesa: <strong class="text-white">${spool.tempBed ? spool.tempBed + '°C' : 'N/I'}</strong></span>
+              </div>
+              <div class="flex items-center space-x-1.5 text-slate-300">
+                <i class="fa-solid fa-gauge-high text-emerald-400"></i>
+                <span>Fluxo: <strong class="text-white">${spool.flowRate ? spool.flowRate + '%' : '100%'}</strong></span>
+              </div>
+              <div class="flex items-center space-x-1.5 text-slate-300">
+                <i class="fa-solid fa-bolt text-sky-400"></i>
+                <span>Vol.: <strong class="text-white">${spool.maxVolumetric ? spool.maxVolumetric + ' mm³/s' : 'N/I'}</strong></span>
+              </div>
+            </div>
+
+            <div class="space-y-1.5 mb-4">
+              <div class="flex justify-between items-baseline text-xs">
+                <span class="text-slate-400">Restante:</span>
+                <span class="font-bold text-white">${spool.currentWeight}g <span class="text-slate-500 font-normal">/ ${spool.initialWeight}g</span></span>
+              </div>
+              <div class="w-full h-2.5 bg-slate-900 rounded-full overflow-hidden p-0.5 border border-slate-700/50">
+                <div class="h-full rounded-full ${progressColor} transition-all duration-300" style="width: ${Math.min(pct, 100)}%"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="pt-3 border-t border-slate-700/60 flex items-center justify-between gap-2">
+            <button type="button" onclick="openDeductModal('${spool.id}')" class="flex-1 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-xl text-xs font-semibold transition flex items-center justify-center space-x-1 cursor-pointer">
+              <i class="fa-solid fa-minus"></i>
+              <span>Baixa de Peso</span>
+            </button>
+            <div class="flex items-center space-x-1">
+              <button type="button" onclick="editSpool('${spool.id}')" class="p-2 text-slate-400 hover:text-sky-400 transition cursor-pointer" title="Editar">
+                <i class="fa-solid fa-pen-to-square text-sm"></i>
+              </button>
+              <button type="button" onclick="deleteSpool('${spool.id}')" class="p-2 text-slate-400 hover:text-red-400 transition cursor-pointer" title="Excluir">
+                <i class="fa-solid fa-trash-can text-sm"></i>
+              </button>
+            </div>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    function updateStats() {
+      const totalSpools = spools.length;
+      const totalWeightGrams = spools.reduce((acc, s) => acc + (Number(s.currentWeight) || 0), 0);
+      const lowStockCount = spools.filter(s => (s.currentWeight / s.initialWeight) < 0.25).length;
+      
+      const totalValue = spools.reduce((acc, s) => {
+        if (!s.price || !s.initialWeight) return acc;
+        return acc + ((s.price / s.initialWeight) * s.currentWeight);
+      }, 0);
+
+      document.getElementById('stat-total-spools').innerText = totalSpools;
+      document.getElementById('stat-total-weight').innerText = (totalWeightGrams / 1000).toFixed(2) + ' kg';
+      document.getElementById('stat-low-stock').innerText = lowStockCount;
+      document.getElementById('stat-total-value').innerText = 'R$ ' + totalValue.toFixed(2);
+    }
+
+    function openSpoolModal(spoolToEdit = null) {
+      const modal = document.getElementById('spool-modal');
+      const form = document.getElementById('spool-form');
+      const title = document.getElementById('modal-title');
+
+      form.reset();
+
+      if (spoolToEdit) {
+        title.innerText = 'Editar Filamento';
+        document.getElementById('spool-id').value = spoolToEdit.id;
+        document.getElementById('input-brand').value = spoolToEdit.brand;
+        document.getElementById('input-material').value = spoolToEdit.material;
+        document.getElementById('input-color-name').value = spoolToEdit.colorName;
+        document.getElementById('input-color-hex').value = spoolToEdit.colorHex || detectColorHex(spoolToEdit.colorName);
+        document.getElementById('input-initial-weight').value = spoolToEdit.initialWeight;
+        document.getElementById('input-current-weight').value = spoolToEdit.currentWeight;
+        document.getElementById('input-price').value = spoolToEdit.price || '';
+        document.getElementById('input-temp-nozzle').value = spoolToEdit.tempNozzle || '';
+        document.getElementById('input-temp-bed').value = spoolToEdit.tempBed || '';
+        document.getElementById('input-flow-rate').value = spoolToEdit.flowRate || '';
+        document.getElementById('input-max-volumetric').value = spoolToEdit.maxVolumetric || '';
+      } else {
+        title.innerText = 'Novo Filamento';
+        document.getElementById('spool-id').value = '';
+        document.getElementById('input-color-hex').value = '#0284c7';
+      }
+
+      modal.classList.remove('hidden');
+    }
+
+    function closeSpoolModal() {
+      document.getElementById('spool-modal').classList.add('hidden');
+    }
+
+    function saveSpool(e) {
+      e.preventDefault();
+      const id = document.getElementById('spool-id').value;
+
+      const newSpool = {
+        id: id || Date.now().toString() + Math.random().toString(36).substr(2, 4),
+        brand: document.getElementById('input-brand').value.trim(),
+        material: document.getElementById('input-material').value,
+        colorName: document.getElementById('input-color-name').value.trim(),
+        colorHex: document.getElementById('input-color-hex').value,
+        initialWeight: Number(document.getElementById('input-initial-weight').value),
+        currentWeight: Number(document.getElementById('input-current-weight').value),
+        price: Number(document.getElementById('input-price').value) || 0,
+        tempNozzle: Number(document.getElementById('input-temp-nozzle').value) || null,
+        tempBed: Number(document.getElementById('input-temp-bed').value) || null,
+        flowRate: Number(document.getElementById('input-flow-rate').value) || null,
+        maxVolumetric: Number(document.getElementById('input-max-volumetric').value) || null
+      };
+
+      if (id) {
+        const index = spools.findIndex(s => s.id === id);
+        if (index !== -1) spools[index] = newSpool;
+      } else {
+        spools.push(newSpool);
+      }
+
+      saveToStorage();
+      renderSpools();
+      closeSpoolModal();
+    }
+
+    function editSpool(id) {
+      const spool = spools.find(s => s.id === id);
+      if (spool) openSpoolModal(spool);
+    }
+
+    function deleteSpool(id) {
+      if (confirm('Deseja realmente remover este carretel?')) {
+        spools = spools.filter(s => s.id !== id);
+        saveToStorage();
+        renderSpools();
+      }
+    }
+
+    function openDeductModal(id) {
+      const spool = spools.find(s => s.id === id);
+      if (!spool) return;
+
+      document.getElementById('deduct-spool-id').value = spool.id;
+      document.getElementById('deduct-spool-info').innerText = `${spool.brand} - ${spool.colorName} (${spool.material})`;
+      document.getElementById('deduct-amount').value = '';
+
+      document.getElementById('deduct-modal').classList.remove('hidden');
+    }
+
+    function closeDeductModal() {
+      document.getElementById('deduct-modal').classList.add('hidden');
+    }
+
+    function confirmDeduction(e) {
+      e.preventDefault();
+      const id = document.getElementById('deduct-spool-id').value;
+      const amount = Number(document.getElementById('deduct-amount').value);
+
+      const spool = spools.find(s => s.id === id);
+      if (spool && amount > 0) {
+        spool.currentWeight = Math.max(0, spool.currentWeight - amount);
+        saveToStorage();
+        renderSpools();
+      }
+
+      closeDeductModal();
+    }
+
+    function handleExcelImport(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      if (typeof XLSX === 'undefined') {
+        alert('A biblioteca de leitura de Excel não foi carregada. Verifique sua conexão.');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+          if (!jsonData || jsonData.length === 0) {
+            alert('A planilha está vazia.');
+            return;
+          }
+
+          pendingDuplicates = [];
+          importedSuccessCount = 0;
+
+          jsonData.forEach((row) => {
+            const getVal = (possibleNames) => {
+              const keys = Object.keys(row);
+              for (let name of possibleNames) {
+                const foundKey = keys.find(k => k.trim().toLowerCase() === name.toLowerCase());
+                if (foundKey && row[foundKey] !== undefined) return row[foundKey];
+              }
+              return null;
+            };
+
+            const brand = String(getVal(['marca', 'brand', 'fabricante']) || 'Genérico').trim();
+            const materialRaw = (getVal(['material', 'tipo', 'type']) || 'PLA').toString().toUpperCase();
+            
+            if (!customMaterials.includes(materialRaw)) {
+              customMaterials.push(materialRaw);
+              localStorage.setItem(MATERIALS_KEY, JSON.stringify(customMaterials));
+              populateMaterialDropdowns();
+            }
+            const material = materialRaw;
+
+            const colorName = String(getVal(['cor', 'color', 'nome da cor']) || 'Sem Cor').trim();
+            
+            let colorHex = getVal(['hex', 'cor hex']);
+            if (!colorHex || !String(colorHex).startsWith('#')) {
+              colorHex = detectColorHex(colorName);
+            }
+
+            const initialWeight = Number(getVal(['peso inicial', 'peso inicial (g)', 'peso'])) || 1000;
+            const currentWeight = Number(getVal(['peso atual', 'peso atual (g)', 'restante'])) ?? initialWeight;
+            const price = Number(getVal(['preco', 'preço', 'valor'])) || 0;
+            const tempNozzle = Number(getVal(['temp bico', 'temperatura', 'bico'])) || null;
+            const tempBed = Number(getVal(['temp mesa', 'temperatura mesa', 'mesa', 'bed temp', 'bed'])) || null;
+            const flowRate = Number(getVal(['fluxo', 'flow'])) || null;
+            const maxVolumetric = Number(getVal(['volumetrica', 'volumétrica', 'max volumetric speed', 'volumetric'])) || null;
+
+            const incomingSpool = {
+              id: Date.now().toString() + Math.random().toString(36).substr(2, 4),
+              brand, material, colorName, colorHex, initialWeight, currentWeight, price, tempNozzle, tempBed, flowRate, maxVolumetric
+            };
+
+            const existing = spools.find(s => 
+              s.brand.toLowerCase() === brand.toLowerCase() &&
+              s.material.toLowerCase() === material.toLowerCase() &&
+              s.colorName.toLowerCase() === colorName.toLowerCase()
+            );
+
+            if (existing) {
+              pendingDuplicates.push({ existing, incoming: incomingSpool });
+            } else {
+              spools.push(incomingSpool);
+              importedSuccessCount++;
+            }
+          });
+
+          saveToStorage();
+          renderSpools();
+
+          if (pendingDuplicates.length > 0) {
+            currentDuplicateIndex = 0;
+            showDuplicateModal();
+          } else {
+            alert(`${importedSuccessCount} filamentos importados com sucesso!`);
+          }
+
+        } catch (err) {
+          console.error(err);
+          alert('Erro ao ler a planilha. Verifique se o formato é .xlsx, .xls ou .csv.');
+        } finally {
+          event.target.value = '';
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function showDuplicateModal() {
+      if (currentDuplicateIndex >= pendingDuplicates.length) {
+        document.getElementById('duplicate-modal').classList.add('hidden');
+        saveToStorage();
+        renderSpools();
+        alert(`Processamento concluído! ${importedSuccessCount} filamentos adicionados/atualizados.`);
+        return;
+      }
+
+      const item = pendingDuplicates[currentDuplicateIndex];
+      document.getElementById('duplicate-msg').innerText = 
+        `O filamento "${item.incoming.brand} - ${item.incoming.colorName} (${item.incoming.material})" da planilha já existe no seu estoque.`;
+
+      document.getElementById('dup-existing-info').innerText = 
+        `Restante: ${item.existing.currentWeight}g / ${item.existing.initialWeight}g`;
+
+      document.getElementById('dup-incoming-info').innerText = 
+        `Restante: ${item.incoming.currentWeight}g / ${item.incoming.initialWeight}g`;
+
+      document.getElementById('duplicate-modal').classList.remove('hidden');
+    }
+
+    function resolveDuplicate(action) {
+      const item = pendingDuplicates[currentDuplicateIndex];
+
+      if (action === 'merge') {
+        item.existing.initialWeight += item.incoming.initialWeight;
+        item.existing.currentWeight += item.incoming.currentWeight;
+        if (item.incoming.price) item.existing.price += item.incoming.price;
+        importedSuccessCount++;
+      } else if (action === 'add') {
+        spools.push(item.incoming);
+        importedSuccessCount++;
+      }
+
+      currentDuplicateIndex++;
+      showDuplicateModal();
+    }
+  </script>
+</body>
+</html>
